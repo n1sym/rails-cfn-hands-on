@@ -32,11 +32,7 @@ Resources:
         - Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
           Image: !Sub ${AWS::AccountId}.dkr.ecr.ap-northeast-1.amazonaws.com/${ServiceName}${EnvSuffix}:latest
           LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Sub /aws/ecs/${ServiceName}${EnvSuffix}
-              awslogs-region: ap-northeast-1
-              awslogs-stream-prefix: ecs
+            LogDriver: awsfirelens
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
@@ -57,6 +53,32 @@ Resources:
               ValueFrom: !Sub /${ServiceName}/${EnvName}/DB_HOST
             - Name: DATABASE_PASSWORD
               ValueFrom: !ImportValue cfn-rds:SecretsManagerDBPasswordArn
+        - Name: !Join [ '', [ log-router, !Ref EnvSuffix ] ]
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.ap-northeast-1.amazonaws.com/${ServiceName}${EnvSuffix}:log-router
+          Cpu: 64
+          MemoryReservation: 128
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /aws/ecs/${ServiceName}-firelens${EnvSuffix}
+              awslogs-region: "ap-northeast-1"
+              awslogs-stream-prefix: "firelens"
+          FirelensConfiguration:
+            Type: fluentbit
+            Options:
+              config-file-type: file
+              config-file-value: /fluent-bit/custom.conf
+          Environment:
+            - Name: APP_ID
+              Value: !Join [ '', [ !Ref ServiceName, -log-router, !Ref EnvSuffix ] ]
+            - Name: AWS_ACCOUNT_ID
+              Value: !Ref AWS::AccountId
+            - Name: AWS_REGION
+              Value: ap-northeast-1
+            - Name: LOG_BUCKET_NAME
+              Value: !Join [ '', [ !Ref ServiceName, -logs, !Ref EnvSuffix ] ]
+            - Name: LOG_GROUP_NAME
+              Value: !Sub /aws/ecs/${ServiceName}${EnvSuffix}
       Cpu: 256
       ExecutionRoleArn: !ImportValue cfn-iam:ECSTaskExecutionRole
       Family: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
