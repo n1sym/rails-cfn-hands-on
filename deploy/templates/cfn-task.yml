@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - qa
+      - prod
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+  RailsEnv:
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - production
+
+Resources:
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.ap-northeast-1.amazonaws.com/${ServiceName}${EnvSuffix}:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /aws/ecs/${ServiceName}${EnvSuffix}
+              awslogs-region: ap-northeast-1
+              awslogs-stream-prefix: ecs
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+          Command:
+            - /app/entrypoint.sh
+          Environment:
+            - Name: DATABASE_USERNAME
+              Value: postgres
+            - Name: RAILS_LOG_TO_STDOUT
+              Value: true
+            - Name: RAILS_ENV
+              Value: !Ref RailsEnv
+            - Name: TZ
+              Value: Asia/Tokyo
+          Secrets:
+            - Name: DATABASE_HOST
+              ValueFrom: !Sub /${ServiceName}/${EnvName}/DB_HOST
+            - Name: DATABASE_PASSWORD
+              ValueFrom: !ImportValue cfn-rds:SecretsManagerDBPasswordArn
+      Cpu: 256
+      ExecutionRoleArn: !ImportValue cfn-iam:ECSTaskExecutionRole
+      Family: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !ImportValue cfn-iam:ECSTaskRole
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+  
+  ECSTaskDefinitionArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ServiceName}/${EnvName}/ECSTaskDefinitionArn
+      Type: String
+      Value: !Ref ECSTaskDefinition
