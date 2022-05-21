@@ -1,24 +1,24 @@
-# README
+# About
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Zenn で公開している [CloudFormation ハンズオン](https://zenn.dev/hukurouo/books/cfn-hands-on) という本のサンプルコードです。
 
-Things you may want to cover:
+## build
+~~~
+docker-compose build
+docker-compose up -d
+~~~
 
-* Ruby version
+## login
+~~~
+docker-compose exec web /bin/bash
+~~~
 
-* System dependencies
+## ECS Exec
+~~~
+aws ecs execute-command --cluster cfn-sample-dev --task *** --container cfn-sample-dev --interactive --command '/bin/bash'
+~~~
 
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+## bundle install
+~~~
+docker-compose run --rm web bundle install
+~~~
