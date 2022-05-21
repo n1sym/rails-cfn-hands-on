@@ -1,6 +1,8 @@
 class TweetsController < ApplicationController
   before_action :set_tweet, only: %i[ show edit update destroy ]
 
+  protect_from_forgery
+
   # GET /tweets or /tweets.json
   def index
     @tweets = Tweet.all
