@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - qa
+      - prod
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ALBListener1
+      - ALBListener2
+    Properties:
+      Cluster: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+      DeploymentController:
+        Type: CODE_DEPLOY
+      DesiredCount: 1
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 300
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !ImportValue cfn-base:SecurityGroupEcsId
+          Subnets:
+            - !ImportValue cfn-base:PublicSubnetIngress1A
+            - !ImportValue cfn-base:PublicSubnetIngress1C
+      LoadBalancers:
+        - ContainerName: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+          ContainerPort: 80
+          TargetGroupArn: !Ref TargetGroupGreen
+      TaskDefinition: !Sub '{{resolve:ssm:/${ServiceName}/${EnvName}/ECSTaskDefinitionArn}}'
+      ServiceName: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix ] ]
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+  
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: !Join [ '', [ alb-, !Ref ServiceName, !Ref EnvSuffix ] ]
+      Scheme: internet-facing
+      SecurityGroups:
+        - !ImportValue cfn-base:SecurityGroupIngressId
+      Subnets:
+        - !ImportValue cfn-base:PublicSubnetIngress1A
+        - !ImportValue cfn-base:PublicSubnetIngress1C
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+
+  TargetGroupGreen:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /api/health_check
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: ip
+      Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix, -tg-green ] ]
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue cfn-base:VpcId
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+  TargetGroupBlue:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /api/health_check
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: ip
+      Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix, -tg-blue ] ]
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue cfn-base:VpcId
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+  
+  ALBListener1:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroupGreen
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroupGreen
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 10080
+      Protocol: HTTP
+
+Outputs:
+  ECSClusterArn:
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, ECSClusterArn ] ]
