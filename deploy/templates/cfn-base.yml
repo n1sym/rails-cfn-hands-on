@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  # ECS用のパブリックサブネット
+  PublicSubnet1A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  PublicSubnet1C:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  
+  PublicSubnet1ARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1A
+      RouteTableId: !Ref PublicRouteTable
+  
+  PublicSubnet1CRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1C
+      RouteTableId: !Ref PublicRouteTable
+
+  ## DB用のプライベートサブネット
+  PrivateSubnetDb1A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.16.0/24
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: Type
+          Value: Isolated
+
+  PrivateSubnetDb1C:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.17.0/24
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: Type
+          Value: Isolated
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  PrivateSubnetDb1ARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetDb1A
+
+  PrivateSubnetDb1CRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetDb1C
+  
+  # セキュリティグループ
+  SecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Allowed Ports
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: from 0.0.0.0/0:80
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+        - CidrIpv6: ::/0
+          Description: from ::/0:80
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  SecurityGroupECS:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group of ECS
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          Description: HTTP for Ingress
+          FromPort: 80
+          SourceSecurityGroupId:
+            Fn::GetAtt:
+              - SecurityGroupIngress
+              - GroupId
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  SecurityGroupDb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group of database
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          Description: PostgreSQL protocol from ECS
+          FromPort: 5432
+          SourceSecurityGroupId:
+            Fn::GetAtt:
+              - SecurityGroupECS
+              - GroupId
+          ToPort: 5432
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+Outputs:
+  VpcId:
+     Value: !Ref Vpc
+     Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, VpcId ] ]
+  SecurityGroupIngressId:
+     Value: !GetAtt SecurityGroupIngress.GroupId
+     Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, SecurityGroupIngressId ] ]
+  SecurityGroupEcsId:
+     Value: !GetAtt SecurityGroupECS.GroupId
+     Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, SecurityGroupEcsId ] ]
+  SecurityGroupDbId:
+    Value: !GetAtt  SecurityGroupDb.GroupId
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, SecurityGroupDbId ] ]
+  PrivateSubnetDb1A:
+    Value: !GetAtt PrivateSubnetDb1A.SubnetId
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, PrivateSubnetDb1A ] ]
+  PrivateSubnetDb1C:
+    Value: !GetAtt PrivateSubnetDb1C.SubnetId
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, PrivateSubnetDb1C ] ]
+  PublicSubnetIngress1A:
+    Value: !GetAtt PublicSubnet1A.SubnetId
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, PublicSubnetIngress1A ] ]
+  PublicSubnetIngress1C:
+    Value: !GetAtt PublicSubnet1C.SubnetId
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, PublicSubnetIngress1C ] ]
