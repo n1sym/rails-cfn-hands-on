@@ -15,7 +15,7 @@ Parameters:
     Default: n1sym
   RepositoryName:
     Type: String
-    Default: cfn-hands-on
+    Default: rails-cfn-hands-on
   
 Resources:
   ECSTaskRole:
