@@ -15,7 +15,7 @@ Parameters:
     Default: n1sym
   RepositoryName:
     Type: String
-    Default: rails-cfn-hands-on
+    Default: cfn-hands-on
   
 Resources:
   ECSTaskRole:
@@ -48,7 +48,37 @@ Resources:
                   - 'ssmmessages:OpenDataChannel'
                 Resource:
                   - '*'
-
+        - PolicyName: ECSFireLensPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:AbortMultipartUpload'
+                  - 's3:GetBucketLocation'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:ListBucketMultipartUploads'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub arn:aws:s3:::${ServiceName}-logs${EnvSuffix}
+                  - !Sub arn:aws:s3:::${ServiceName}-logs${EnvSuffix}/*
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:GenerateDataKey'
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub arn:aws:logs:ap-northeast-1:${AWS::AccountId}:log-group:/aws/ecs/${ServiceName}${EnvSuffix}:*
+              
   ECSTaskExecutionRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -104,6 +134,19 @@ Resources:
                   - 'secretsmanager:DescribeSecret'
                   - 'secretsmanager:ListSecretVersionIds'
                 Resource: !ImportValue cfn-rds:SecretsManagerDBPasswordArn
+        - PolicyName: ECSFireLensPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub arn:aws:logs:ap-northeast-1:${AWS::AccountId}:log-group:/aws/ecs/${ServiceName}-firelens${EnvSuffix}:*
   
   ECSCodeDeployRole:
     Type: 'AWS::IAM::Role'
@@ -124,41 +167,7 @@ Resources:
           Value: !Ref AWS::StackName
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
-  
-  ECSEventsRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - events.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
-      Path: /
-      RoleName: !Join [ '', [ ecs-events-, !Ref ServiceName, !Ref EnvSuffix ] ]
-      Tags:
-        - Key: "CfnStackName"
-          Value: !Ref AWS::StackName
-      Policies:
-        - PolicyName: ECSEventsPolicy
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'ecs:RunTask'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource: '*'
-                Condition:
-                  StringLike:
-                    iam:PassedToService: ecs-tasks.amazonaws.com
-  
+
   GithubOidc:
     Type: AWS::IAM::OIDCProvider
     Properties:
@@ -215,6 +224,40 @@ Resources:
                 Resource: 
                   - !GetAtt ECSTaskRole.Arn
                   - !GetAtt ECSTaskExecutionRole.Arn
+  
+  ECSEventsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      RoleName: !Join [ '', [ ecs-events-, !Ref ServiceName, !Ref EnvSuffix ] ]
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+      Policies:
+        - PolicyName: ECSEventsPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:RunTask'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
 
 Outputs:
   ECSTaskExecutionRole:
