@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+Resources:
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix, -glue-database ] ]
+
+  GlueTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabase
+      TableInput:
+        Name: !Join [ '', [ !Ref ServiceName, !Ref EnvSuffix, -glue-table ] ]
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          has_encrypted_data: false
+          serialization.encoding: utf-8
+          EXTERNAL: true
+          projection.enabled: true
+          projection.dt.type: date
+          projection.dt.range: "2022/04/01,NOW"
+          projection.dt.format: yyyy/MM/dd
+          projection.dt.interval: 1
+          projection.dt.interval.unit: DAYS
+          storage.location.template:
+            !Join
+              - ''
+              - - !Sub s3://${ServiceName}-logs${EnvSuffix}/fluent-bit-logs/tweet-log/
+                - '${dt}'
+        StorageDescriptor:
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          Columns:
+            - Name: date
+              Type: date
+            - Name: ip
+              Type: string
+            - Name: environment
+              Type: string
+            - Name: level
+              Type: string
+            - Name: title
+              Type: string
+            - Name: content
+              Type: string
+            - Name: user
+              Type: string
+            - Name: message
+              Type: string
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          Location: !Sub s3://${ServiceName}-logs${EnvSuffix}/fluent-bit-logs/tweet-log
+          SerdeInfo:
+            Parameters:
+              serialization.format: '1'
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+        PartitionKeys:
+          - Name: dt
+            Type: string
