@@ -69,4 +69,18 @@ Rails.application.configure do
   # config.action_cable.disable_request_forgery_protection = true
 
   config.hosts << "app"
+  config.rails_semantic_logger.format = :json
+ 
+   # Log setting
+   config.log_level = :debug
+   config.log_tags = {
+     request_id: :request_id,
+     ip:         :remote_ip
+   }
+ 
+   if ENV["RAILS_LOG_TO_STDOUT"].present?
+     $stdout.sync = true
+     config.rails_semantic_logger.add_file_appender = false
+     config.semantic_logger.add_appender(io: $stdout, formatter: :json)
+   end
 end

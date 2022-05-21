@@ -29,6 +29,14 @@ class TweetsController < ApplicationController
       if @tweet.save
         format.html { redirect_to tweet_url(@tweet), notice: "Tweet was successfully created." }
         format.json { render :show, status: :created, location: @tweet }
+        logger = SemanticLogger['Tweet']
+         log = {
+           message: "tweet was created",
+           content: @tweet.content,
+           title: @tweet.title,
+           user: "test user"
+         }
+         logger.info log
       else
         format.html { render :new, status: :unprocessable_entity }
         format.json { render json: @tweet.errors, status: :unprocessable_entity }
