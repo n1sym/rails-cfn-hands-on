@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  DatabaseName:
+    Type: String
+    Default: myapp
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - qa
+      - prod
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+  DatabaseEnvSuffix:
+    Type: String
+    Default: _development
+    AllowedValues:
+      - _development
+      - ''
+  InstanceType:
+    Type: String
+    Default: db.t3.micro
+
+Resources:
+  DBSubnetGroup: 
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: subnet group for db
+      SubnetIds: 
+        - !ImportValue cfn-base:PrivateSubnetDb1A
+        - !ImportValue cfn-base:PrivateSubnetDb1C
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+
+  DBPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      GenerateSecretString:
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+      Name: !Sub ${ServiceName}${EnvSuffix}-database-password
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      Engine: postgres
+      MasterUsername: postgres
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${ServiceName}${EnvSuffix}-database-password:SecretString}}'
+      DBName: !Join [ '', [ !Ref DatabaseName, !Ref DatabaseEnvSuffix ] ]
+      DBInstanceIdentifier:  !Sub ${ServiceName}${EnvSuffix}-instance-1
+      DBInstanceClass: !Ref InstanceType
+      AllocatedStorage: 20
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: 
+        - !ImportValue cfn-base:SecurityGroupDbId
+      BackupRetentionPeriod: 0
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
+
+  DBInstanceEndpoint:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ServiceName}/${EnvName}/DB_HOST
+      Type: String
+      Value: !GetAtt DBInstance.Endpoint.Address
+
+Outputs:
+  SecretsManagerDBPasswordArn:
+    Value: !Ref DBPassword
+    Export:
+      Name: !Join [ ":", [ !Ref AWS::StackName, SecretsManagerDBPasswordArn ] ]
