@@ -357,6 +357,19 @@ Resources:
       SecurityGroupIds:
         - !Ref SecurityGroupEgress
   
+  EventsInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.events'
+      VpcId: !Ref Vpc
+      SubnetIds: 
+        - !Ref PrivateSubnetEgress1A
+        - !Ref PrivateSubnetEgress1C
+      SecurityGroupIds:
+        - !Ref SecurityGroupEgress
+  
   S3GatewayEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
