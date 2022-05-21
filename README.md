@@ -1,6 +1,6 @@
 # About
 
-Zenn で公開している [CloudFormation ハンズオン](https://zenn.dev/hukurouo/books/cfn-hands-on) という本のサンプルコードです。
+Zenn で公開している [Rails × CloudFormation ハンズオン](https://zenn.dev/hukurouo/books/cfn-hands-on) という本のサンプルコードです。
 
 ## build
 ~~~
