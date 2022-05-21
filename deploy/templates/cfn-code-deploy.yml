@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+Resources:
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Join [ '', [ AppECS-, !Ref ServiceName, !Ref EnvSuffix ] ]
+      ComputePlatform: ECS
+      Tags:
+        - Key: "CfnStackName"
+          Value: !Ref AWS::StackName
