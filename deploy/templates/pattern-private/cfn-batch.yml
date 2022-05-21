@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServiceName:
+    Type: String
+    Default: cfn-sample
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - qa
+      - prod
+  EnvSuffix:
+    Type: String
+    Default: -dev
+    AllowedValues:
+      - -dev
+      - -qa
+      - ''
+  SampleBatchScheduleExpression:
+    Type: String
+    Default: cron(0 * * * ? *)
+
+Resources:
+  SampleBatchRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub ${ServiceName}${EnvSuffix} sample batch rule
+      Name: !Join [ '', [ sample-batch-, !Ref ServiceName, !Ref EnvSuffix ] ]
+      ScheduleExpression: !Ref SampleBatchScheduleExpression
+      Targets:
+        - Id: sample-batch
+          Arn: !ImportValue cfn-ecs:ECSClusterArn
+          RoleArn: !ImportValue cfn-iam:ECSEventsRole
+          Input: !Sub "{\"containerOverrides\": [{\"name\": \"${ServiceName}${EnvSuffix}\",\"command\": [\"bundle\", \"exec\", \"rake\", \"sample:batch:create_tweet:execute\"]}]}"
+          EcsParameters:
+            TaskDefinitionArn: !Sub '{{resolve:ssm:/${ServiceName}/${EnvName}/ECSTaskDefinitionArn}}'
+            TaskCount: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: DISABLED
+                SecurityGroups: 
+                  - !ImportValue cfn-base:SecurityGroupECSId
+                Subnets:
+                  - !ImportValue cfn-base:PrivateSubnetECS1A
+                  - !ImportValue cfn-base:PrivateSubnetECS1C
+            LaunchType: FARGATE
+            PlatformVersion: LATEST
