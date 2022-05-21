@@ -1,0 +1,105 @@
+name: code deploy
+on: 
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feature/**'
+jobs:
+  test:
+    name: Test
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/myapp_test
+      DATABASE_PASSWORD: postgres
+      DATABASE_USERNAME: postgres
+      RAILS_ENV: test
+      BUNDLE_PATH: vendor/bundle
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myapp_test
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1.2'
+      - name: Cache gems
+        uses: actions/cache@v1
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gem-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gem-
+      - name: Install dependencies
+        run: bundle install
+      - name: db setup
+        run: bundle exec rake db:migrate
+      - name: Run tests
+        run: bundle exec rake test
+  deploy:
+    name: Deploy Fargate
+    needs: test
+    env:
+      SERVICE_NAME: cfn-sample-dev
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Configure AWS credentials from Test account
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-oidc-${{ env.SERVICE_NAME }}
+        aws-region: ap-northeast-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - uses: docker/build-push-action@v2
+      id: build-image
+      with:
+        push: true
+        file: deploy/development/Dockerfile
+        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.SERVICE_NAME }}:latest
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+    - name: Download task definition
+      run: |
+        aws ecs describe-task-definition --task-definition $SERVICE_NAME --query "taskDefinition.{containerDefinitions: containerDefinitions, family: family, taskRoleArn: taskRoleArn, executionRoleArn: executionRoleArn, networkMode: networkMode, volumes: volumes, placementConstraints: placementConstraints, requiresCompatibilities: requiresCompatibilities, cpu: cpu, memory: memory}" > task-definition.json
+    
+    - name: Deploy to Amazon ECS
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        service: ${{ env.SERVICE_NAME }}
+        cluster: ${{ env.SERVICE_NAME }}
+        codedeploy-appspec: deploy/development/appspec.yml
+        codedeploy-application: AppECS-${{ env.SERVICE_NAME }}
+        codedeploy-deployment-group: DgpECS-${{ env.SERVICE_NAME }}
